@@ -79,6 +79,7 @@ public class HelloController {
 
                 lastIndex = matcher.end();
             }
+            System.out.println("test");
 
             Text remainingText = new Text(text.substring(lastIndex));
             textFlow.getChildren().add(remainingText);
