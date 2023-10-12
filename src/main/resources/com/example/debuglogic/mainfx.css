@@ -1,0 +1,8 @@
+.split-pane .split-pane-divider {
+    -fx-background-color: #24262D;
+    -fx-padding: 0.5;
+}
+
+.text-area {
+    -fx-background-color: #3C3F47;
+}
