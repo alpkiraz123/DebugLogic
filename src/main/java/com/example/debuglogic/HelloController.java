@@ -10,6 +10,10 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.scene.text.TextFlow;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.Arrays;
 
 import javax.tools.Diagnostic;
@@ -41,6 +45,11 @@ import java.util.List;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
+import java.io.File;
+import java.io.FileWriter;
 
 public class HelloController {
 
@@ -98,40 +107,49 @@ public class HelloController {
     @FXML
     private void CompileCode() {
         String code = getCodeArea();
+
         try {
-            // Create a new JavaCompiler
+            // Create a temporary directory to store the user's code
+            File tempDir = new File("temp");
+            tempDir.mkdirs();
+
+            // Write user code to a temporary .java file
+            File javaFile = new File(tempDir, "UserCode.java");
+            FileWriter writer = new FileWriter(javaFile);
+            writer.write(code);
+            writer.close();
+
+            // Compile user code
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+            int compilationResult = compiler.run(null, null, null, javaFile.getPath());
 
-            // Create a new DiagnosticCollector to collect compilation messages
-            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+            if (compilationResult == 0) {
+                // Compilation was successful, load and execute user code
+                URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { tempDir.toURI().toURL() });
+                Class<?> userClass = Class.forName("UserCode", true, classLoader);
 
-            // Get the standard file manager from the compiler
-            StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, null, null);
+                // Attempt to execute the user's code
+                try {
+                    Method mainMethod = userClass.getMethod("main", String[].class);
+                    mainMethod.invoke(null, (Object) new String[0]);
 
-            // Create a new JavaFileObject from the code string
-            JavaFileObject codeObject = new JavaSourceFromString("Main", code);
-
-            // Create a list of JavaFileObjects to compile
-            List<JavaFileObject> compilationUnits = Arrays.asList(codeObject);
-
-            // Set the class output directory
-            List<String> options = Arrays.asList("-d", "bin");
-
-            // Create a new CompilationTask
-            JavaCompiler.CompilationTask task = compiler.getTask(null, fileManager, diagnostics, options, null, compilationUnits);
-
-            // Compile the code
-            boolean success = task.call();
-
-            // Print the compilation messages
-            for (Diagnostic<? extends JavaFileObject> diagnostic : diagnostics.getDiagnostics()) {
-                System.out.println(diagnostic.getMessage(null));
+                } catch (InvocationTargetException ite) {
+                    // Handle exceptions in the Exceptions class
+                    Exceptions exceptions = new Exceptions();
+                    exceptions.setCodeException(ite.getCause().getClass().getSimpleName());
+                    exceptions.returnException();
+                }
+            } else {
+                // Compilation failed, handle the error
+                Exceptions exceptions = new Exceptions();
+                exceptions.setCodeException("CompilationFailed");
+                exceptions.returnException();
             }
-
-            // Close the file manager
-            fileManager.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+        } catch (Exception e) {
+            // Handle generic exceptions here
+            Exceptions exceptions = new Exceptions();
+            exceptions.setCodeException(e.getClass().getSimpleName());
+            exceptions.returnException();
         }
     }
 }
