@@ -14,7 +14,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.Arrays;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
@@ -24,7 +26,6 @@ import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -68,88 +69,86 @@ public class HelloController {
 
     @FXML
     private void initialize() {
-        UnaryOperator<TextFormatter.Change> styleOperator = change -> {
-            String text = change.getControlNewText();
-            List<String> keywords = Arrays.asList("public", "class", "void", "String", "int", "if", "else", "for", "while");
-            String keywordColor = "-fx-fill: blue;";
-
-            Pattern pattern = Pattern.compile("\\b(" + String.join("|", keywords) + ")\\b");
-            Matcher matcher = pattern.matcher(text);
-
-            textFlow.getChildren().clear();
-
-            int lastIndex = 0;
-            while (matcher.find()) {
-                Text plainText = new Text(text.substring(lastIndex, matcher.start()));
-                Text keywordText = new Text(text.substring(matcher.start(), matcher.end()));
-                keywordText.setStyle(keywordColor);
-
-                textFlow.getChildren().addAll(plainText, keywordText);
-
-                lastIndex = matcher.end();
-            }
-            System.out.println("test");
-
-            Text remainingText = new Text(text.substring(lastIndex));
-            textFlow.getChildren().add(remainingText);
-
-            return change;
-        };
-
-        codeArea.setTextFormatter(new TextFormatter<>(styleOperator));
+        // Not sure what to do right now.
     }
 
-
-
-
-
-
     @FXML
-    private void CompileCode() {
+    private void CompileCode() throws IOException {
         String code = getCodeArea();
+        String className = null;
+        Path javaFilePath = null;
+        Path classFilePath = null;
 
         try {
-            // Create a temporary directory to store the user's code
-            File tempDir = new File("temp");
-            tempDir.mkdirs();
 
-            // Write user code to a temporary .java file
-            File javaFile = new File(tempDir, "UserCode.java");
-            FileWriter writer = new FileWriter(javaFile);
-            writer.write(code);
-            writer.close();
+            Path tempDir = Files.createTempDirectory("usercode");
 
-            // Compile user code
+            // Extract the class name from the user's code
+            className = extractClassNameFromCode(code);
+
+
+            javaFilePath = tempDir.resolve(className + ".java");
+            Files.write(javaFilePath, code.getBytes());
+
+
             JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-            int compilationResult = compiler.run(null, null, null, javaFile.getPath());
+            int compilationResult = compiler.run(null, null, null, javaFilePath.toString());
 
             if (compilationResult == 0) {
                 // Compilation was successful, load and execute user code
-                URLClassLoader classLoader = URLClassLoader.newInstance(new URL[] { tempDir.toURI().toURL() });
-                Class<?> userClass = Class.forName("UserCode", true, classLoader);
+                URLClassLoader classLoader = URLClassLoader.newInstance(new URL[]{tempDir.toUri().toURL()});
+                Class<?> userClass = classLoader.loadClass(className);
 
-                // Attempt to execute the user's code
-                try {
-                    Method mainMethod = userClass.getMethod("main", String[].class);
-                    mainMethod.invoke(null, (Object) new String[0]);
 
-                } catch (InvocationTargetException ite) {
-                    // Handle exceptions in the Exceptions class
-                    Exceptions exceptions = new Exceptions();
-                    exceptions.setCodeException(ite.getCause().getClass().getSimpleName());
-                    exceptions.returnException();
-                }
+                Method mainMethod = userClass.getMethod("main", String[].class);
+                mainMethod.invoke(null, (Object) new String[0]);
             } else {
                 // Compilation failed, handle the error
                 Exceptions exceptions = new Exceptions();
                 exceptions.setCodeException("CompilationFailed");
                 exceptions.returnException();
             }
+        } catch (InvocationTargetException ite) {
+
+            Throwable cause = ite.getCause();
+            Exceptions exceptions = new Exceptions();
+            exceptions.setCodeException(cause.getClass().getSimpleName());
+            exceptions.returnException();
         } catch (Exception e) {
-            // Handle generic exceptions here
+
             Exceptions exceptions = new Exceptions();
             exceptions.setCodeException(e.getClass().getSimpleName());
             exceptions.returnException();
+        } finally {
+
+            if (javaFilePath != null) {
+                Files.delete(javaFilePath);
+            }
+            if (classFilePath != null) {
+                Files.delete(classFilePath);
+            }
         }
+    }
+
+    private String extractClassNameFromCode(String code) {
+
+        String[] lines = code.split("\n");
+        for (String line : lines) {
+            if (line.contains("class")) {
+                //Get class.
+                String[] parts = line.split("\\s+");
+                for (String part : parts) {
+                    if (part.equals("class")) {
+                        int index = Arrays.asList(parts).indexOf("class");
+                        if (index + 1 < parts.length) {
+                            return parts[index + 1].trim();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Default to a generic class name if the class name is not found
+        return "UserClass" + System.currentTimeMillis();
     }
 }

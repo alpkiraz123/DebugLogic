@@ -6,3 +6,5 @@
 .text-area {
     -fx-background-color: #3C3F47;
 }
+
+.highlighted { -fx-fill: blue; }
